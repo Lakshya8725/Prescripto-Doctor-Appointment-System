@@ -5,9 +5,13 @@ import { toast } from "react-toastify";
 export const AdminContext = createContext();
 
 const AdminContextProvider = ({ children }) => {
-  const backendUrl = import.meta.env.VITE_BACKEND_URL;
+  const backendUrl =
+    import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
 
-  const [aToken, setAToken] = useState(localStorage.getItem("aToken") || "");
+  const [aToken, setAToken] = useState(() => {
+    const stored = localStorage.getItem("aToken");
+    return stored && stored !== "undefined" && stored !== "null" ? stored : "";
+  });
   const [doctors, setDoctors] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [dashData, setDashData] = useState(null);
@@ -35,6 +39,10 @@ const AdminContextProvider = ({ children }) => {
         toast.error(data.message);
       }
     } catch (err) {
+      if (err.response?.status === 401) {
+        setAToken("");
+        localStorage.removeItem("aToken");
+      }
       toast.error(err.response?.data?.message || "Failed to load doctors");
     }
   };
@@ -78,6 +86,10 @@ const AdminContextProvider = ({ children }) => {
         toast.error(data.message);
       }
     } catch (err) {
+      if (err.response?.status === 401) {
+        setAToken("");
+        localStorage.removeItem("aToken");
+      }
       toast.error(err.response?.data?.message || "Failed to load appointments");
     }
   };
@@ -121,6 +133,10 @@ const AdminContextProvider = ({ children }) => {
         toast.error(data.message);
       }
     } catch (err) {
+      if (err.response?.status === 401) {
+        setAToken("");
+        localStorage.removeItem("aToken");
+      }
       toast.error(
         err.response?.data?.message || "Failed to load dashboard data",
       );

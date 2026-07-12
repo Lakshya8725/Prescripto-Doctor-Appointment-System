@@ -2,6 +2,7 @@ import doctorModel from "../models/doctorModel.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import appointmentModel from "../models/appointmentModel.js";
+import { releaseSlot } from "../utils/slotBooking.js";
 import cloudinary from "cloudinary";
 
 /* ================= DOCTOR LIST ================= */
@@ -112,14 +113,7 @@ const appointmentCancel = async (req, res) => {
     appointment.cancelled = true;
     await appointment.save();
 
-    // release slot
-    const doctor = await doctorModel.findById(docId);
-    if (doctor?.slots_booked?.[appointment.slotDate]) {
-      doctor.slots_booked[appointment.slotDate] = doctor.slots_booked[
-        appointment.slotDate
-      ].filter((t) => t !== appointment.slotTime);
-      await doctor.save();
-    }
+    await releaseSlot(docId, appointment.slotDate, appointment.slotTime);
 
     res.json({ success: true, message: "Appointment cancelled" });
   } catch (err) {

@@ -21,6 +21,7 @@ const Appointment = () => {
   const [docSlots, setDocSlots] = useState([]);
   const [slotIndex, setSlotIndex] = useState(0);
   const [slotTime, setSlotTime] = useState("");
+  const [isBooking, setIsBooking] = useState(false);
 
   /* ================= LOAD DOCTOR ================= */
   useEffect(() => {
@@ -99,11 +100,12 @@ const Appointment = () => {
       return navigate("/login");
     }
 
-    if (!slotTime) {
-      toast.error("Please select a time slot");
+    if (!slotTime || isBooking) {
+      if (!slotTime) toast.error("Please select a time slot");
       return;
     }
 
+    setIsBooking(true);
     try {
       const selectedDate = docSlots[slotIndex].date;
       const slotDate = `${selectedDate.getDate()}-${selectedDate.getMonth() + 1}-${selectedDate.getFullYear()}`;
@@ -124,10 +126,15 @@ const Appointment = () => {
         navigate("/my-appointments");
       } else {
         toast.error(data.message);
+        await getDoctorsData();
+        getAvailableSlots();
+        setSlotTime("");
       }
     } catch (err) {
       toast.error("Failed to book appointment");
       console.error(err);
+    } finally {
+      setIsBooking(false);
     }
   };
 
@@ -226,15 +233,15 @@ const Appointment = () => {
             <div className="flex justify-center">
               <button
                 onClick={handleBookAppointment}
-                disabled={!slotTime}
+                disabled={!slotTime || isBooking}
                 className={`mt-8 rounded-full px-8 py-3 font-semibold transition-all
                   ${
-                    slotTime
+                    slotTime && !isBooking
                       ? "bg-blue-600 text-white hover:bg-blue-700"
                       : "bg-gray-300 text-gray-500 cursor-not-allowed"
                   }`}
               >
-                Book Appointment
+                {isBooking ? "Booking..." : "Book Appointment"}
               </button>
             </div>
           </>

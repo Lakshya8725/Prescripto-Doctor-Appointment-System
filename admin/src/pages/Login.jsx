@@ -21,6 +21,8 @@ const Login = () => {
         });
 
         if (data.success) {
+          localStorage.removeItem("dToken");
+          setDToken("");
           localStorage.setItem("aToken", data.token);
           setAToken(data.token);
           toast.success("Login successful 🎉");
@@ -35,6 +37,8 @@ const Login = () => {
         });
 
         if (data.success) {
+          localStorage.removeItem("aToken");
+          setAToken("");
           localStorage.setItem("dToken", data.token);
           setDToken(data.token);
           console.log("Doctor token:", data.token);

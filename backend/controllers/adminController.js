@@ -4,6 +4,7 @@ import validator from "validator";
 import { v2 as cloudinary } from "cloudinary";
 import jwt from "jsonwebtoken";
 import appointmentModel from "../models/appointmentModel.js";
+import { releaseSlot } from "../utils/slotBooking.js";
 import userModel from "../models/userModel.js";
 
 /* ================= ADD DOCTOR ================= */
@@ -193,7 +194,7 @@ const allDoctors = async (req, res) => {
 /* ================= GET ALL APPOINTMENTS ================= */
 const appointmentsAdmin = async (req, res) => {
   try {
-    const appointments = await appointmentModel.find({});
+    const appointments = await appointmentModel.find({}).sort({ date: -1 });
     return res.json({
       success: true,
       appointments,
@@ -234,19 +235,11 @@ const appointmentCancel = async (req, res) => {
     }
 
     // 3️⃣ UPDATE & SAVE (THIS IS THE KEY FIX)
+    const { docId, slotDate, slotTime } = appointment;
     appointment.cancelled = true;
     await appointment.save();
 
-    // 4️⃣ Release doctor slot
-    const { docId, slotDate, slotTime } = appointment;
-    const doctor = await doctorModel.findById(docId);
-
-    if (doctor?.slots_booked?.[slotDate]) {
-      doctor.slots_booked[slotDate] = doctor.slots_booked[slotDate].filter(
-        (t) => t !== slotTime,
-      );
-      await doctor.save();
-    }
+    await releaseSlot(docId, slotDate, slotTime);
 
     return res.json({
       success: true,

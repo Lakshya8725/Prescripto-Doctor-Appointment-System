@@ -7,13 +7,16 @@ import doctorModel from "../models/doctorModel.js";
 import appointmentModel from "../models/appointmentModel.js";
 import Razorpay from "razorpay";
 import crypto from "crypto";
+import { reserveSlot, releaseSlot } from "../utils/slotBooking.js";
+import { isVerified, clearVerifications } from "../utils/otpService.js";
+import { formatPhone } from "../utils/sendSms.js";
 
 // ================= REGISTER =================
 const registerUser = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, phone } = req.body;
 
-    if (!name || !email || !password) {
+    if (!name || !email || !password || !phone) {
       return res
         .status(400)
         .json({ success: false, message: "All fields are required" });
@@ -23,7 +26,44 @@ const registerUser = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid email" });
     }
 
-    const existingUser = await userModel.findOne({ email });
+    let formattedPhone;
+    try {
+      formattedPhone = formatPhone(phone);
+    } catch {
+      return res.status(400).json({
+        success: false,
+        message: "Enter a valid 10-digit Indian mobile number",
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const emailOk = await isVerified({
+      target: normalizedEmail,
+      channel: "email",
+    });
+    const phoneOk = await isVerified({
+      target: formattedPhone,
+      channel: "phone",
+    });
+
+    if (!emailOk) {
+      return res.status(400).json({
+        success: false,
+        message: "Please verify your email with OTP first",
+      });
+    }
+
+    if (!phoneOk) {
+      return res.status(400).json({
+        success: false,
+        message: "Please verify your phone number with OTP first",
+      });
+    }
+
+    const existingUser = await userModel.findOne({
+      $or: [{ email: normalizedEmail }, { phone: formattedPhone }],
+    });
     if (existingUser) {
       return res
         .status(409)
@@ -31,25 +71,30 @@ const registerUser = async (req, res) => {
     }
 
     if (password.length < 8) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Password must be at least 8 characters",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 8 characters",
+      });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await userModel.create({
       name,
-      email,
+      email: normalizedEmail,
+      phone: formattedPhone,
       password: hashedPassword,
-      role: "user",
+      emailVerified: true,
+      phoneVerified: true,
+    });
+
+    await clearVerifications({
+      email: normalizedEmail,
+      phone: formattedPhone,
     });
 
     const token = jwt.sign(
-      { id: user._id, role: user.role },
+      { id: user._id, role: "user" },
       process.env.JWT_SECRET,
       { expiresIn: "7d" },
     );
@@ -155,40 +200,54 @@ const bookAppointment = async (req, res) => {
     const { id: userId } = req.user;
     const { docId, slotDate, slotTime } = req.body;
 
-    const docData = await doctorModel.findById(docId);
-    if (!docData) {
+    if (!docId || !slotDate || !slotTime) {
+      return res.json({ success: false, message: "Missing booking details" });
+    }
+
+    const docExists = await doctorModel.exists({ _id: docId });
+    if (!docExists) {
       return res.json({ success: false, message: "Doctor not found" });
     }
 
-    let slots_booked = docData.slots_booked || {};
-
-    if (slots_booked[slotDate]?.includes(slotTime)) {
-      return res.json({ success: false, message: "Slot already booked" });
+    // Atomic reserve — only one concurrent request wins this slot
+    const docData = await reserveSlot(docId, slotDate, slotTime);
+    if (!docData) {
+      return res.json({
+        success: false,
+        message: "Slot already booked. Please choose another time.",
+      });
     }
 
-    if (!slots_booked[slotDate]) slots_booked[slotDate] = [];
-    slots_booked[slotDate].push(slotTime);
-
-    await doctorModel.findByIdAndUpdate(docId, { slots_booked });
-
     const userData = await userModel.findById(userId).select("-password");
-
     const docInfo = docData.toObject();
     delete docInfo.slots_booked;
 
-    const appointment = await appointmentModel.create({
-      userId,
-      docId,
-      slotDate,
-      slotTime,
-      userData,
-      docData: docInfo,
-      amount: docInfo.fees,
-      date: Date.now(),
-      cancelled: false,
-      payment: false,
-      isCompleted: false,
-    });
+    let appointment;
+    try {
+      appointment = await appointmentModel.create({
+        userId,
+        docId,
+        slotDate,
+        slotTime,
+        userData,
+        docData: docInfo,
+        amount: docInfo.fees,
+        date: Date.now(),
+        cancelled: false,
+        payment: false,
+        isCompleted: false,
+      });
+    } catch (err) {
+      // Roll back slot if unique index rejects duplicate appointment
+      await releaseSlot(docId, slotDate, slotTime);
+      if (err.code === 11000) {
+        return res.json({
+          success: false,
+          message: "Slot already booked. Please choose another time.",
+        });
+      }
+      throw err;
+    }
 
     res.json({ success: true, message: "Appointment Booked", appointment });
   } catch (err) {
@@ -233,18 +292,11 @@ const cancelAppointment = async (req, res) => {
       cancelled: true,
     });
 
-    const doctorData = await doctorModel.findById(appointmentData.docId);
-    if (doctorData) {
-      let slots_booked = doctorData.slots_booked || {};
-      if (slots_booked[appointmentData.slotDate]) {
-        slots_booked[appointmentData.slotDate] = slots_booked[
-          appointmentData.slotDate
-        ].filter((t) => t !== appointmentData.slotTime);
-      }
-      await doctorModel.findByIdAndUpdate(appointmentData.docId, {
-        slots_booked,
-      });
-    }
+    await releaseSlot(
+      appointmentData.docId,
+      appointmentData.slotDate,
+      appointmentData.slotTime,
+    );
 
     res.json({ success: true, message: "Appointment cancelled" });
   } catch (err) {

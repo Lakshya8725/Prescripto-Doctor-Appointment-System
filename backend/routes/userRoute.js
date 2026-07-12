@@ -10,10 +10,22 @@ import {
   paymentRazorpay,
   verifyRazorpay,
 } from "../controllers/userController.js";
+import {
+  sendEmailOtp,
+  verifyEmailOtp,
+  sendPhoneOtp,
+  verifyPhoneOtp,
+} from "../controllers/otpController.js";
 import authUser from "../middlewares/authUser.js";
 import upload from "../middlewares/multer.js";
 
 const userRouter = express.Router();
+
+// OTP verification (signup)
+userRouter.post("/send-email-otp", sendEmailOtp);
+userRouter.post("/verify-email-otp", verifyEmailOtp);
+userRouter.post("/send-phone-otp", sendPhoneOtp);
+userRouter.post("/verify-phone-otp", verifyPhoneOtp);
 
 // Profile
 userRouter.get("/get-profile", authUser, getProfile);

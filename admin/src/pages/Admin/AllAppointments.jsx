@@ -2,12 +2,18 @@ import React, { useEffect, useContext } from "react";
 import { AdminContext } from "../../context/AdminContext";
 import { AppContext } from "../../context/AppContext";
 import cancelIcon from "../../assets/assets_admin/cancel_icon.svg";
+import {
+  useAppointmentPagination,
+  LoadMoreButton,
+} from "../../hooks/useAppointmentPagination.jsx";
 
 const AllAppointments = () => {
   const { aToken, appointments, getAllAppointments, cancelAppointment } =
     useContext(AdminContext);
 
   const { calculateAge, formatDateVerbose, currency } = useContext(AppContext);
+  const { visible, hasMore, loadMore, total } =
+    useAppointmentPagination(appointments);
 
   useEffect(() => {
     if (aToken) {
@@ -47,7 +53,7 @@ const AllAppointments = () => {
         </div>
 
         {/* TABLE ROWS */}
-        {appointments.map((item, index) => (
+        {visible.map((item, index) => (
           <div
             key={item._id}
             className="
@@ -137,6 +143,13 @@ const AllAppointments = () => {
             No appointments found
           </p>
         )}
+
+        <LoadMoreButton
+          hasMore={hasMore}
+          onClick={loadMore}
+          loaded={visible.length}
+          total={total}
+        />
       </div>
     </div>
   );

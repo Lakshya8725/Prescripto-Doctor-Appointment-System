@@ -21,19 +21,30 @@ const allowedOrigins = [
   "http://localhost:5174",
 ].filter(Boolean);
 
-app.use(
-  cors({
-    origin(origin, callback) {
-      // Allow server-to-server / Postman requests with no origin
-      if (!origin || allowedOrigins.includes(origin)) {
-        return callback(null, true);
+const corsOptions =
+  allowedOrigins.length > 2
+    ? {
+        origin(origin, callback) {
+          if (!origin || allowedOrigins.includes(origin)) {
+            return callback(null, true);
+          }
+          return callback(new Error("Not allowed by CORS"));
+        },
+        credentials: true,
       }
-      return callback(new Error("Not allowed by CORS"));
-    },
-    credentials: true,
-  }),
-);
-app.use(express.json());
+    : {
+        origin: true,
+        credentials: true,
+      };
+
+if (allowedOrigins.length <= 2) {
+  console.warn(
+    "FRONTEND_URL/ADMIN_URL not set — CORS is open. Set both on Render after Vercel deploy.",
+  );
+}
+
+app.use(cors(corsOptions));
+app.use(express.json({ limit: "10mb" }));
 
 //api endpoints
 app.use("/api/admin", adminRouter);
@@ -48,6 +59,23 @@ app.get("/", (req, res) => {
 
 app.get("/health", (req, res) => {
   res.status(200).json({ success: true, message: "API healthy" });
+});
+
+// Multer / upload / CORS errors → JSON (prevents axios "Network Error")
+app.use((err, req, res, next) => {
+  if (err?.code === "LIMIT_FILE_SIZE") {
+    return res
+      .status(400)
+      .json({ success: false, message: "Image must be under 5MB" });
+  }
+  if (err?.name === "MulterError") {
+    return res.status(400).json({ success: false, message: err.message });
+  }
+  if (err?.message === "Not allowed by CORS") {
+    return res.status(403).json({ success: false, message: err.message });
+  }
+  console.error("Unhandled error:", err);
+  res.status(500).json({ success: false, message: err.message || "Server error" });
 });
 
 app.listen(port, () => {

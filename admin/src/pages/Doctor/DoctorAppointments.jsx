@@ -2,6 +2,10 @@ import React, { useContext, useEffect } from "react";
 import { DoctorContext } from "../../context/DoctorContext";
 import cancelIcon from "../../assets/assets_admin/cancel_icon.svg";
 import AcceptIcon from "../../assets/assets_admin/tick_icon.svg";
+import {
+  useAppointmentPagination,
+  LoadMoreButton,
+} from "../../hooks/useAppointmentPagination.jsx";
 
 const DoctorAppointments = () => {
   const {
@@ -11,6 +15,8 @@ const DoctorAppointments = () => {
     completeAppointment,
     cancelAppointment,
   } = useContext(DoctorContext);
+  const { visible, hasMore, loadMore, total } =
+    useAppointmentPagination(appointments);
 
   useEffect(() => {
     if (dToken) {
@@ -50,7 +56,7 @@ const DoctorAppointments = () => {
           <p className="text-center text-gray-500">No appointments found</p>
         )}
 
-        {appointments.reverse().map((item, index) => (
+        {visible.map((item, index) => (
           <div
             key={item._id}
             className="bg-white rounded-xl shadow-sm p-4 space-y-2"
@@ -117,6 +123,12 @@ const DoctorAppointments = () => {
             </div>
           </div>
         ))}
+        <LoadMoreButton
+          hasMore={hasMore}
+          onClick={loadMore}
+          loaded={visible.length}
+          total={total}
+        />
       </div>
 
       {/* ================= DESKTOP VIEW ================= */}
@@ -131,7 +143,7 @@ const DoctorAppointments = () => {
           <p className="text-center">Action</p>
         </div>
 
-        {appointments.map((item, index) => (
+        {visible.map((item, index) => (
           <div
             key={item._id}
             className="grid grid-cols-[40px_1.5fr_1fr_60px_1.5fr_80px_80px] min-w-[1000px] px-6 py-4 border-b text-sm text-gray-700 hover:bg-gray-50"
@@ -191,6 +203,12 @@ const DoctorAppointments = () => {
             </div>
           </div>
         ))}
+        <LoadMoreButton
+          hasMore={hasMore}
+          onClick={loadMore}
+          loaded={visible.length}
+          total={total}
+        />
       </div>
     </div>
   );

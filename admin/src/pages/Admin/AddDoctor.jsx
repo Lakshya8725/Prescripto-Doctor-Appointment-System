@@ -16,23 +16,35 @@ const AddDoctor = () => {
   const [degree, setDegree] = useState("");
   const [address1, setAddress1] = useState("");
   const [address2, setAddress2] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { backendUrl, aToken } = useContext(AdminContext);
+  const { backendUrl, aToken, setAToken } = useContext(AdminContext);
 
   const onSubmitHandler = async (event) => {
     event.preventDefault();
-    try {
-      if (!docImg) {
-        return toast.error("Image not selected");
-      }
-      const formData = new FormData();
 
+    if (!backendUrl) {
+      return toast.error("Backend URL missing. Check admin/.env file.");
+    }
+    if (!aToken) {
+      return toast.error("Not logged in. Please login again.");
+    }
+    if (!docImg) {
+      return toast.error("Image not selected");
+    }
+    if (password.length < 8) {
+      return toast.error("Password must be at least 8 characters");
+    }
+
+    setIsSubmitting(true);
+    try {
+      const formData = new FormData();
       formData.append("image", docImg);
       formData.append("name", name);
       formData.append("email", email);
       formData.append("password", password);
       formData.append("experience", experience);
-      formData.append("fees", Number(fees));
+      formData.append("fees", fees);
       formData.append("about", about);
       formData.append("speciality", speciality);
       formData.append("degree", degree);
@@ -43,13 +55,13 @@ const AddDoctor = () => {
           line2: address2,
         }),
       );
+
       const { data } = await axios.post(
-        backendUrl + "/api/admin/add-doctor",
+        `${backendUrl}/api/admin/add-doctor`,
         formData,
         {
-          headers: {
-            Authorization: `Bearer ${aToken}`,
-          },
+          headers: { Authorization: `Bearer ${aToken}` },
+          timeout: 60000,
         },
       );
 
@@ -67,11 +79,29 @@ const AddDoctor = () => {
         setAddress1("");
         setAddress2("");
       } else {
-        toast.error(data.message);
+        toast.error(data.message || "Failed to add doctor");
       }
     } catch (err) {
-      toast.error(err.message);
-      console.log(error);
+      if (err.response?.status === 401) {
+        setAToken("");
+        localStorage.removeItem("aToken");
+        toast.error("Session expired. Please login again.");
+        return;
+      }
+
+      const message =
+        err.response?.data?.message ||
+        (err.code === "ECONNABORTED"
+          ? "Upload timed out. Try a smaller image."
+          : null) ||
+        (err.message === "Network Error"
+          ? "Cannot reach backend. Is it running on http://localhost:4000?"
+          : err.message);
+
+      toast.error(message);
+      console.error("Add doctor error:", err);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -93,11 +123,12 @@ const AddDoctor = () => {
             onChange={(e) => setDocImg(e.target.files[0])}
             type="file"
             id="doc-img"
+            accept="image/jpeg,image/png,image/webp,image/jpg"
             hidden
           />
 
           <p className="text-sm text-gray-600">
-            Upload doctor <br /> picture
+            Upload doctor <br /> picture (JPG/PNG, max 5MB)
           </p>
         </div>
 
@@ -135,8 +166,9 @@ const AddDoctor = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 value={password}
                 type="password"
-                placeholder="Password"
+                placeholder="Password (min 8 chars)"
                 required
+                minLength={8}
                 className="input"
               />
             </div>
@@ -164,6 +196,7 @@ const AddDoctor = () => {
                 type="number"
                 placeholder="Fees"
                 required
+                min={1}
                 className="input"
               />
             </div>
@@ -236,10 +269,11 @@ const AddDoctor = () => {
         {/* Button */}
         <button
           type="submit"
+          disabled={isSubmitting}
           className="mt-6 bg-blue-600 text-white px-6 py-2 rounded-md font-medium
-                     hover:bg-blue-700 transition"
+                     hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Add doctor
+          {isSubmitting ? "Uploading..." : "Add doctor"}
         </button>
       </div>
     </form>
